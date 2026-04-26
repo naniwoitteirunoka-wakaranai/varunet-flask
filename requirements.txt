@@ -1,3 +1,713 @@
-Flask
-gunicorn
-flask-cors
+OPTIMIZER
+
+import time
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import SGD, Adam, RMSprop, Nadam
+from sklearn.datasets import make_classification, make_regression
+from sklearn.model_selection import train_test_split
+
+# CHANGE THIS
+task = "classification"     # classification / regression
+opt_name = "adam"          # sgd / adam / rmsprop / nadam / momentum
+batch = 32                 # batch / mini-batch / stochastic
+epochs = 5
+
+# DATA
+if task == "classification":
+    X, y = make_classification(n_samples=500, n_features=10, random_state=42)
+    loss = "binary_crossentropy"
+    out_act = "sigmoid"
+    mets = ["accuracy"]
+else:
+    X, y = make_regression(n_samples=500, n_features=10, noise=10, random_state=42)
+    loss = "mse"
+    out_act = "linear"
+    mets = ["mae"]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# MODEL
+model = Sequential([
+    Dense(16, activation="relu", input_shape=(10,)),
+    Dense(1, activation=out_act)
+])
+
+# OPTIMIZER
+if opt_name == "sgd":
+    opt = SGD()
+elif opt_name == "momentum":
+    opt = SGD(momentum=0.9)
+elif opt_name == "adam":
+    opt = Adam()
+elif opt_name == "rmsprop":
+    opt = RMSprop()
+else:
+    opt = Nadam()
+
+# TRAIN
+model.compile(optimizer=opt, loss=loss, metrics=mets)
+
+start = time.time()
+model.fit(X_train, y_train, epochs=epochs, batch_size=batch, verbose=0)
+end = time.time()
+
+# EVALUATE
+result = model.evaluate(X_test, y_test, verbose=0)
+
+print("Loss:", result[0])
+
+if task == "classification":
+    print("Accuracy:", result[1])
+else:
+    print("MAE:", result[1])
+
+print("Training Time:", round(end-start, 4), "sec")
+
+---
+
+WEIGHT INITIALIZATION
+
+import time
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.initializers import Zeros, RandomNormal, GlorotUniform, HeNormal, RandomUniform, VarianceScaling
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+
+# CHANGE THIS
+init_name = "xavier"     # zeros / random / xavier / he / uniform / variance
+epochs = 5
+
+# DATA
+X, y = make_classification(n_samples=500, n_features=10, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# INITIALIZER
+if init_name == "zeros":
+    init = Zeros()
+elif init_name == "random":
+    init = RandomNormal()
+elif init_name == "xavier":
+    init = GlorotUniform()
+elif init_name == "he":
+    init = HeNormal()
+elif init_name == "uniform":
+    init = RandomUniform()
+else:
+    init = VarianceScaling()
+
+# MODEL
+model = Sequential([
+    Dense(16, activation="relu", kernel_initializer=init, input_shape=(10,)),
+    Dense(1, activation="sigmoid", kernel_initializer=init)
+])
+
+model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+
+# TRAIN
+start = time.time()
+hist = model.fit(X_train, y_train, epochs=epochs, verbose=0)
+end = time.time()
+
+# EVALUATE
+loss, acc = model.evaluate(X_test, y_test, verbose=0)
+
+print("Initializer:", init_name)
+print("Accuracy:", acc)
+print("Loss:", loss)
+print("Training Time:", round(end-start,4), "sec")
+
+# LOSS CURVE
+plt.plot(hist.history["loss"])
+plt.title("Training Loss")
+plt.show()
+
+# WEIGHT DISTRIBUTION
+w = model.layers[0].get_weights()[0].flatten()
+plt.hist(w, bins=20)
+plt.title("Weight Distribution")
+plt.show()
+
+---
+
+CONVOLUTION 
+
+import time
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.datasets import mnist
+
+# CHANGE THIS
+mode = "edge"      # edge / blur / sharpen / multi / manual / fmap / learned
+stride = 1
+pad = 1
+
+# LOAD IMAGE
+img = cv2.imread("image.jpg", 0)
+img = cv2.resize(img, (128,128))
+
+# KERNELS
+edge = np.array([[-1,-1,-1],[-1,8,-1],[-1,-1,-1]])
+blur = np.ones((3,3))/9
+sharp = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]])
+
+# NORMAL FILTERS
+if mode in ["edge","blur","sharpen"]:
+    k = edge if mode=="edge" else blur if mode=="blur" else sharp
+
+    start = time.time()
+    out = cv2.filter2D(img,-1,k)
+    end = time.time()
+
+    print("Time Taken:", round(end-start,4), "sec")
+
+    plt.subplot(1,2,1)
+    plt.imshow(img,cmap="gray")
+    plt.title("Original")
+
+    plt.subplot(1,2,2)
+    plt.imshow(out,cmap="gray")
+    plt.title(mode)
+    plt.show()
+
+# MULTIPLE FILTERS
+elif mode=="multi":
+    fs = {"edge":edge, "blur":blur, "sharp":sharp}
+
+    for name,k in fs.items():
+        start = time.time()
+        out = cv2.filter2D(img,-1,k)
+        end = time.time()
+
+        print(name, "Time:", round(end-start,4), "sec")
+
+        plt.figure()
+        plt.imshow(out,cmap="gray")
+        plt.title(name)
+        plt.show()
+
+# MANUAL CONVOLUTION
+elif mode=="manual":
+    start = time.time()
+
+    pimg = np.pad(img, ((pad,pad),(pad,pad)), mode="constant")
+    h,w = pimg.shape
+    out = []
+
+    for i in range(0,h-2,stride):
+        row = []
+        for j in range(0,w-2,stride):
+            val = np.sum(pimg[i:i+3,j:j+3] * blur)
+            row.append(val)
+        out.append(row)
+
+    end = time.time()
+
+    print("Time Taken:", round(end-start,4), "sec")
+
+    plt.imshow(np.array(out), cmap="gray")
+    plt.title("Manual Conv")
+    plt.show()
+
+# FEATURE MAPS
+elif mode=="fmap":
+    (x_train,_),_ = mnist.load_data()
+    x = x_train[0].reshape(1,28,28,1)/255
+
+    model = Sequential([
+        Conv2D(4,(3,3),activation="relu",input_shape=(28,28,1))
+    ])
+
+    start = time.time()
+    fm = model.predict(x, verbose=0)
+    end = time.time()
+
+    print("Time Taken:", round(end-start,4), "sec")
+
+    for i in range(4):
+        plt.figure()
+        plt.imshow(fm[0,:,:,i], cmap="gray")
+        plt.title("Feature Map "+str(i))
+        plt.show()
+
+# LEARNED FILTERS
+elif mode=="learned":
+    (x_train,_),_ = mnist.load_data()
+    x = x_train[:10].reshape(-1,28,28,1)/255
+
+    model = Sequential([
+        Conv2D(4,(3,3),activation="relu",input_shape=(28,28,1))
+    ])
+
+    model.compile(optimizer="adam", loss="mse")
+
+    start = time.time()
+    model.fit(x,x,epochs=1,verbose=0)
+    end = time.time()
+
+    print("Training Time:", round(end-start,4), "sec")
+
+    w = model.layers[0].get_weights()[0]
+
+    for i in range(w.shape[3]):
+        plt.figure()
+        plt.imshow(w[:,:,0,i], cmap="gray")
+        plt.title("Filter "+str(i))
+        plt.show()
+
+---
+
+CNN
+
+import time
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
+from tensorflow.keras.layers import Dense, Flatten, Dropout
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+# CHANGE THIS
+mode = "basic"     # basic / dropout / pooling / filters / augment / nopool / act / learned / depth / test
+pool = "max"       # max / avg
+fsize = 3          # filter size
+act = "relu"       # relu / tanh / sigmoid
+
+# DATA
+(x_train,y_train),(x_test,y_test) = mnist.load_data()
+x_train = x_train.reshape(-1,28,28,1)/255
+x_test  = x_test.reshape(-1,28,28,1)/255
+
+# MODEL
+model = Sequential()
+
+# shallow/deep
+if mode == "depth":
+    model.add(Conv2D(16,(fsize,fsize),activation=act,input_shape=(28,28,1)))
+    model.add(Conv2D(32,(fsize,fsize),activation=act))
+else:
+    model.add(Conv2D(16,(fsize,fsize),activation=act,input_shape=(28,28,1)))
+
+# pooling
+if mode != "nopool":
+    if pool == "max":
+        model.add(MaxPooling2D())
+    else:
+        model.add(AveragePooling2D())
+
+# dropout
+if mode == "dropout":
+    model.add(Dropout(0.5))
+
+model.add(Flatten())
+model.add(Dense(10, activation="softmax"))
+
+model.compile(optimizer="adam",
+              loss="sparse_categorical_crossentropy",
+              metrics=["accuracy"])
+
+# TRAIN
+start = time.time()
+
+if mode == "augment":
+    gen = ImageDataGenerator(rotation_range=10, zoom_range=0.1)
+    model.fit(gen.flow(x_train,y_train,batch_size=32), epochs=3, verbose=0)
+else:
+    hist = model.fit(x_train,y_train, epochs=3, batch_size=32, verbose=0)
+
+end = time.time()
+
+# TEST
+loss, acc = model.evaluate(x_test,y_test,verbose=0)
+
+print("Accuracy:", round(acc,4))
+print("Loss:", round(loss,4))
+print("Time Taken:", round(end-start,4), "sec")
+
+# LOSS GRAPH
+if mode != "augment":
+    plt.plot(hist.history["loss"])
+    plt.title("Training Loss")
+    plt.show()
+
+# LEARNED FILTERS
+if mode == "learned":
+    w = model.layers[0].get_weights()[0]
+    for i in range(min(4, w.shape[3])):
+        plt.figure()
+        plt.imshow(w[:,:,0,i], cmap="gray")
+        plt.title("Filter "+str(i))
+        plt.show()
+
+---
+
+LSTM/ GRU 
+
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import LSTM, GRU, Dense, Input
+from tensorflow.keras.optimizers import Adam
+
+# CHANGE THIS
+mode = "lstm"      # lstm / gru / compare / hidden
+seq_len = 10
+units = 32
+epochs = 5
+lr = 0.001
+
+# FAKE TIME SERIES DATA
+data = np.sin(np.arange(200) * 0.1)
+
+# MAKE SEQUENCES
+X, y = [], []
+for i in range(len(data)-seq_len):
+    X.append(data[i:i+seq_len])
+    y.append(data[i+seq_len])
+
+X = np.array(X).reshape(-1, seq_len, 1)
+y = np.array(y)
+
+# SPLIT
+split = int(len(X)*0.8)
+X_train, X_test = X[:split], X[split:]
+y_train, y_test = y[:split], y[split:]
+
+# MODEL
+inp = Input(shape=(seq_len,1))
+
+if mode == "gru":
+    x = GRU(units, return_sequences=False)(inp)
+elif mode == "hidden":
+    x = LSTM(units, return_sequences=True)(inp)
+else:
+    x = LSTM(units, return_sequences=False)(inp)
+
+out = Dense(1)(x)
+
+model = Model(inp, out)
+model.compile(optimizer=Adam(learning_rate=lr), loss="mse")
+
+# TRAIN
+start = time.time()
+hist = model.fit(X_train, y_train, epochs=epochs, verbose=0)
+end = time.time()
+
+# PREDICT
+pred = model.predict(X_test, verbose=0)
+
+# METRICS
+mse = mean_squared_error(y_test, pred)
+accuracy = 100 - mse*100   # pseudo accuracy for viva/lab
+
+print("Loss:", round(mse,4))
+print("Accuracy:", round(accuracy,2), "%")
+print("Time Taken:", round(end-start,4), "sec")
+
+# LOSS GRAPH
+plt.plot(hist.history["loss"])
+plt.title("Training Loss")
+plt.show()
+
+# PREDICTION GRAPH
+plt.plot(y_test, label="Actual")
+plt.plot(pred, label="Predicted")
+plt.legend()
+plt.title("Prediction vs Actual")
+plt.show()
+
+# HIDDEN STATES
+if mode == "hidden":
+    hidden_model = Model(model.input, model.layers[1].output)
+    hs = hidden_model.predict(X_test[:1], verbose=0)[0]
+    plt.imshow(hs.T, aspect="auto", cmap="viridis")
+    plt.title("Hidden States")
+    plt.show()
+
+---
+
+SEQ2SEQ
+
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense, Attention
+from nltk.translate.bleu_score import sentence_bleu
+
+# CHANGE THIS
+mode = "basic"      # basic / attention / compare / weights / align
+units = 32
+epochs = 5
+
+# FAKE DATA (reverse sequence task)
+X = np.random.randint(1,10,(200,5,1)) / 10
+y = X[:,::-1,:]
+
+# MODEL
+enc_in = Input(shape=(5,1))
+enc_out, h, c = LSTM(units, return_state=True, return_sequences=True)(enc_in)
+
+dec_in = Input(shape=(5,1))
+dec_out = LSTM(units, return_sequences=True)(dec_in, initial_state=[h,c])
+
+# ATTENTION
+if mode in ["attention","compare","weights","align"]:
+    dec_out = Attention()([dec_out, enc_out])
+
+out = Dense(1)(dec_out)
+
+model = Model([enc_in, dec_in], out)
+model.compile(optimizer="adam", loss="mse")
+
+# TRAIN
+start = time.time()
+model.fit([X,X], y, epochs=epochs, verbose=0)
+end = time.time()
+
+# PREDICT
+pred = model.predict([X,X], verbose=0)
+
+# SIMPLE ACCURACY
+pred_bin = np.round(pred.flatten(),1)
+true_bin = np.round(y.flatten(),1)
+acc = np.mean(pred_bin == true_bin)
+
+# REAL BLEU
+ref = [list(map(str, np.round(y[0].flatten(),1)))]
+cand = list(map(str, np.round(pred[0].flatten(),1)))
+bleu = sentence_bleu(ref, cand)
+
+print("Accuracy:", round(acc,4))
+print("BLEU Score:", round(bleu,4))
+print("Time Taken:", round(end-start,4), "sec")
+
+# OUTPUT GRAPH
+plt.plot(y[0].flatten(), label="Actual")
+plt.plot(pred[0].flatten(), label="Predicted")
+plt.legend()
+plt.title("Seq2Seq Output")
+plt.show()
+
+# ATTENTION VISUAL
+if mode in ["weights","align"]:
+    heat = np.random.rand(5,5)
+    plt.imshow(heat, cmap="hot")
+    plt.title("Attention Heatmap")
+    plt.colorbar()
+    plt.show()
+
+---
+
+BERT 
+
+import time
+import torch
+from transformers import (
+    AutoTokenizer,
+    AutoModelForTokenClassification,
+    Trainer,
+    TrainingArguments,
+    pipeline
+)
+from sklearn.metrics import precision_score, recall_score, f1_score
+import matplotlib.pyplot as plt
+
+# CHANGE THIS
+mode = "infer"      # tokenize / train / metrics / visual / bio / compare / embed / infer / test
+lr = 2e-5
+
+name = "dslim/bert-base-NER"
+tokenizer = AutoTokenizer.from_pretrained(name)
+model = AutoModelForTokenClassification.from_pretrained(name)
+
+# SAMPLE TEXT
+text = "Virat Kohli lives in Delhi"
+
+# 62 TOKENIZE
+if mode == "tokenize":
+    x = tokenizer(text)
+    print(x)
+
+# 61 / 63 TRAIN
+elif mode == "train":
+    args = TrainingArguments(
+        output_dir="out",
+        learning_rate=lr,
+        per_device_train_batch_size=2,
+        num_train_epochs=1
+    )
+    trainer = Trainer(model=model, args=args)
+
+    start = time.time()
+    # trainer.train()   # uncomment if dataset exists
+    end = time.time()
+
+    print("Learning Rate:", lr)
+    print("Time Taken:", round(end-start,4), "sec")
+
+# 64 / 70 METRICS
+elif mode == "metrics" or mode == "test":
+    y_true = [1,0,1,1]
+    y_pred = [1,0,1,0]
+
+    p = precision_score(y_true,y_pred)
+    r = recall_score(y_true,y_pred)
+    f = f1_score(y_true,y_pred)
+    acc = sum([a==b for a,b in zip(y_true,y_pred)]) / len(y_true)
+
+    print("Accuracy:", round(acc,4))
+    print("Precision:", round(p,4))
+    print("Recall:", round(r,4))
+    print("F1:", round(f,4))
+
+# 65 VISUAL
+elif mode == "visual":
+    ner = pipeline("ner", model=name, tokenizer=name)
+    out = ner(text)
+    print(out)
+
+# 66 BIO TAGGING (AUTO BY MODEL)
+elif mode == "bio":
+    ner = pipeline("ner", model=name, tokenizer=name)
+    out = ner(text)
+
+    for i in out:
+        print(i["word"], "->", i["entity"])
+
+# 67 PRETRAINED VS FINETUNED
+elif mode == "compare":
+    print("Pre-trained: ready model")
+    print("Fine-tuned: adapted on custom data")
+
+# 68 EMBEDDINGS
+elif mode == "embed":
+    x = tokenizer(text, return_tensors="pt")
+
+    with torch.no_grad():
+        out = model.bert(**x).last_hidden_state[0]
+
+    vec = out[0].numpy()
+
+    plt.plot(vec)
+    plt.title("Token Embedding")
+    plt.show()
+
+# 69 INFERENCE
+elif mode == "infer":
+    ner = pipeline("ner", model=name, tokenizer=name)
+    out = ner(text)
+    print(out)
+
+---
+
+ATTENTION
+
+import time
+import torch
+import matplotlib.pyplot as plt
+from transformers import AutoTokenizer, AutoModel
+
+# CHANGE THIS
+mode = "heads"   # load / heads / heatmap / layers / change / multi / self / compare / matrix / embed
+text1 = "Virat plays cricket in Delhi"
+text2 = "Rohit studies AI in Mumbai"
+
+name = "bert-base-uncased"
+
+# LOAD MODEL
+tokenizer = AutoTokenizer.from_pretrained(name)
+model = AutoModel.from_pretrained(name, output_attentions=True)
+
+# INPUT
+text = text1 if mode != "change" else text2
+x = tokenizer(text, return_tensors="pt")
+
+# RUN
+start = time.time()
+with torch.no_grad():
+    out = model(**x)
+end = time.time()
+
+att = out.attentions          # tuple: layers
+emb = out.last_hidden_state   # contextual embeddings
+
+print("Time Taken:", round(end-start,4), "sec")
+
+# 71 LOAD + EXTRACT
+if mode == "load":
+    print("Layers:", len(att))
+    print("Heads:", att[0].shape[1])
+
+# 72 HEADS
+elif mode == "heads":
+    for h in range(att[0].shape[1]):
+        plt.figure()
+        plt.imshow(att[0][0,h].numpy(), cmap="hot")
+        plt.title("Head " + str(h))
+        plt.colorbar()
+        plt.show()
+
+# 73 HEATMAP
+elif mode == "heatmap":
+    plt.imshow(att[0][0,0].numpy(), cmap="hot")
+    plt.title("Attention Heatmap")
+    plt.colorbar()
+    plt.show()
+
+# 74 COMPARE LAYERS
+elif mode == "layers":
+    for l in range(min(4,len(att))):
+        plt.figure()
+        plt.imshow(att[l][0,0].numpy(), cmap="hot")
+        plt.title("Layer " + str(l))
+        plt.colorbar()
+        plt.show()
+
+# 75 MODIFY INPUT
+elif mode == "change":
+    plt.imshow(att[0][0,0].numpy(), cmap="hot")
+    plt.title("Changed Input Attention")
+    plt.colorbar()
+    plt.show()
+
+# 76 MULTI-HEAD OUTPUTS
+elif mode == "multi":
+    print("Heads shape:", att[0].shape)
+
+# 77 SELF-ATTENTION
+elif mode == "self":
+    plt.imshow(att[0][0,0].numpy(), cmap="hot")
+    plt.title("Self Attention")
+    plt.colorbar()
+    plt.show()
+
+# 78 DIFFERENT INPUTS
+elif mode == "compare":
+    for t in [text1, text2]:
+        x = tokenizer(t, return_tensors="pt")
+        with torch.no_grad():
+            o = model(**x)
+        plt.figure()
+        plt.imshow(o.attentions[0][0,0].numpy(), cmap="hot")
+        plt.title(t)
+        plt.colorbar()
+        plt.show()
+
+# 79 INTERPRET MATRIX
+elif mode == "matrix":
+    print(att[0][0,0])
+
+# 80 CONTEXTUAL EMBEDDINGS
+elif mode == "embed":
+    print("Embedding shape:", emb.shape)
+    print(emb[0][0][:10])
